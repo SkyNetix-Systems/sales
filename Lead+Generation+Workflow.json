@@ -1,0 +1,1503 @@
+{
+  "name": "Sales Automation AI review",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "ICP data",
+        "formDescription": "Fill the form in the correct format",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Company Locations",
+              "fieldType": "textarea",
+              "placeholder": "united states; united kingdom; germany; india",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Employee Ranges",
+              "fieldType": "checkbox",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "1-10"
+                  },
+                  {
+                    "option": "11-20"
+                  },
+                  {
+                    "option": "21-50"
+                  },
+                  {
+                    "option": "51-100"
+                  },
+                  {
+                    "option": "101-200"
+                  },
+                  {
+                    "option": "201-500"
+                  },
+                  {
+                    "option": "501-1000"
+                  },
+                  {
+                    "option": "1001-2000"
+                  },
+                  {
+                    "option": "2001-5000"
+                  },
+                  {
+                    "option": "5001-10000"
+                  },
+                  {
+                    "option": "10001+"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Company Keywords",
+              "fieldType": "textarea",
+              "placeholder": "api; digital transformation; platform engineering",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Industries",
+              "fieldType": "textarea",
+              "placeholder": "computer software; information technology",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Technologies",
+              "placeholder": "amazon_aws; google_cloud_hosting; ",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Job Title",
+              "fieldType": "textarea",
+              "placeholder": "director; vp; manager",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Target Departments and Job Function",
+              "fieldType": "textarea",
+              "placeholder": "engineering and technical; devops; mobile development; software development; web development",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.3,
+      "position": [
+        10576,
+        -64
+      ],
+      "id": "472992a4-c909-4566-9b11-d2ac8d6ad467",
+      "name": "On form submission",
+      "webhookId": "293ca3b9-f063-4751-bd20-98f5169e8b8c"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://emailverifier.reoon.com/api/v1/create-bulk-verification-task/\n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"name\": \"n8n_verification_{{ $now.format('YYYY-MM-DD_HH-mm') }}\",\n  \"emails\": {{ JSON.stringify($json.emails) }},\n  \"key\": \"Xi8eAlH2eQT214HsoBfXOo64J6mUw0qg\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        14816,
+        -96
+      ],
+      "id": "277499ca-dbf2-4985-987b-55ded1d7bfe2",
+      "name": "Email Verification"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.apollo.io/api/v1/mixed_companies/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "=\n{\n  \"page\": 1,\n  \"per_page\": 10,\n  \"organization_locations\": {{ JSON.stringify($('Extract ICP').item.json.company_locations) }},\n\n  \"organization_num_employees_ranges\": {{ JSON.stringify($('Extract ICP').item.json.company_employees) }},\n\n\"currently_using_any_of_technology_uids\":{{ JSON.stringify($('Extract ICP').item.json.company_technologies) }},\n\n\"q_organization_keyword_tags\": {{ JSON.stringify($('Extract ICP').item.json.company_keywords) }}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        10944,
+        -64
+      ],
+      "id": "0dee267d-bc26-4797-abba-adcdd68b2d23",
+      "name": "Apollo Company Search",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tppNUuht6CeIC4Mf",
+          "name": "new Hubcreo outreach-apollo key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputData = $input.all();\nconst apolloResponse = inputData[0].json;\n\nconsole.log('🔍 EXTRACT COMPANIES - Processing Apollo Response');\n\n// Extract breadcrumbs for keywords\nconst breadcrumbs = apolloResponse.breadcrumbs || [];\nconst keywords = breadcrumbs\n  .filter(b => b.signal_field_name === 'q_organization_keyword_tags')\n  .map(b => b.value)\n  .join(', ');\n\nconsole.log('📋 Keywords:', keywords || 'NONE');\nconsole.log('📊 Pagination:', apolloResponse.pagination);\n\n// MERGE BOTH accounts AND organizations arrays\nconst accounts = apolloResponse.accounts || [];\nconst organizations = apolloResponse.organizations || [];\nconst companies = [...accounts, ...organizations];\n\nconsole.log('✅ Found', accounts.length, 'accounts +', organizations.length, 'organizations =', companies.length, 'total companies');\n\nif (companies.length === 0) {\n  console.log('⚠️  NO COMPANIES FOUND - Check your Apollo search filters');\n  return [];\n}\n\n// Process ALL companies\nreturn companies.map((company, index) => {\n  const org = company.organization || company;\n  \n  // Basic info\n  const companyId = org.id || company.id;\n  const companyName = org.name || company.name || 'Unknown';\n  \n  // Clean domain\n  let companyDomain = org.primary_domain || org.website_url || org.domain || '';\n  if (companyDomain) {\n    companyDomain = companyDomain\n      .replace(/^https?:\\/\\//, '')\n      .replace(/^www\\./, '')\n      .replace(/\\/$/, '')\n      .trim();\n  }\n  \n  // Location\n  const companyLocation = org.country || org.city || company.country || 'Unknown';\n  \n  // Industry\n  const companyIndustry = org.industry || org.primary_industry || company.industry || 'Technology';\n  \n  // Description\n  const companyDescription = org.short_description || org.description || company.short_description || `${companyName} is a company`;\n  \n  // Employee count\n  let employeeCount = null;\n  const empSources = [org.estimated_num_employees, org.employee_count, company.estimated_num_employees];\n  for (let emp of empSources) {\n    if (emp) {\n      if (typeof emp === 'string') {\n        const match = emp.match(/(\\d+)/);\n        if (match) {\n          employeeCount = parseInt(match[1]);\n          break;\n        }\n      } else if (typeof emp === 'number') {\n        employeeCount = parseInt(emp);\n        break;\n      }\n    }\n  }\n  \n  // Technologies\n  let techArray = [];\n  if (Array.isArray(org.technologies)) {\n    techArray = org.technologies.map(t => typeof t === 'string' ? t : t?.name).filter(Boolean);\n  }\n  const techString = techArray.join(', ');\n  \n  if (index < 3) {\n    console.log('\\n🏢 Company', index + 1, ':', companyName);\n    console.log('   Domain:', companyDomain || 'N/A');\n    console.log('   Location:', companyLocation);\n  }\n  \n  return {\n    json: {\n      company_id: companyId,\n      company_name: companyName,\n      company_domain: companyDomain,\n      company_employees: employeeCount,\n      company_location: companyLocation,\n      company_industry: companyIndustry,\n      company_technologies: techString,\n      company_keywords: keywords,\n      company_description: companyDescription\n    }\n  };\n});\n\nconsole.log('\\n✅ Extracted all', companies.length, 'companies successfully');"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11136,
+        -64
+      ],
+      "id": "c49028fa-d08f-432c-ab26-50251ec84100",
+      "name": "Extract Companies"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const item = $input.item.json;\n\n// Get the AI response from the LLM\nlet aiResponse = item.text || item.output || '';\naiResponse = aiResponse.replace(/```json\\n?|\\n?```/g, '').trim();\n\nlet parsed;\ntry {\n  parsed = JSON.parse(aiResponse);\n} catch (e) {\n  console.log('❌ Failed to parse AI response');\n  console.log('Raw response:', aiResponse);\n  parsed = { \n    approved: false, \n    reason: 'AI response parsing failed',\n    matched_keywords: [],\n    matched_technologies: []\n  };\n}\n\n// Get the ORIGINAL company data\nconst originalCompanyData = $('Format Company Data').item.json;\n\n// Extract matched keywords and technologies from AI response\nconst matchedKeywords = parsed.matched_keywords || [];\nconst matchedTechnologies = parsed.matched_technologies || [];\n\n// Convert arrays to comma-separated strings\nconst keywordsString = matchedKeywords.join(', ');\nconst technologiesString = matchedTechnologies.join(', ');\n\nconsole.log('🆔 Company ID:', originalCompanyData.company_id);\nconsole.log('🏢 Company Name:', originalCompanyData.company_name);\nconsole.log('🎯 AI Decision:', parsed.approved ? 'APPROVED' : 'REJECTED');\nconsole.log('🏷️ Matched Keywords:', keywordsString || 'NONE');\nconsole.log('🔧 Matched Technologies:', technologiesString || 'NONE');\nconsole.log('📊 Raw matched_keywords:', JSON.stringify(matchedKeywords));\nconsole.log('📊 Raw matched_technologies:', JSON.stringify(matchedTechnologies));\n\nreturn {\n  json: {\n    // Get ALL data from the original source\n    company_id: originalCompanyData.company_id,\n    company_name: originalCompanyData.company_name,\n    company_domain: originalCompanyData.company_domain,\n    company_employees: originalCompanyData.company_employees,\n    company_location: originalCompanyData.company_location,\n    company_industry: originalCompanyData.company_industry,\n    company_description: originalCompanyData.company_description,\n    \n    // ✅ FILTERED: Only matched technologies and keywords (as strings)\n    company_technologies: technologiesString,\n    company_keywords: keywordsString,\n    \n    // Add AI validation\n    company_approved: parsed.approved,\n    company_validation_reason: parsed.reason,\n    \n    // Debug fields (optional - remove if not needed)\n    _debug_matched_keywords_array: matchedKeywords,\n    _debug_matched_technologies_array: matchedTechnologies\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12112,
+        -64
+      ],
+      "id": "abf197fb-5757-4d03-a579-91f7a36e95f4",
+      "name": "Parse Company Validation"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// EXTRACT PEOPLE - PROPERLY FIXED FOR LOOPS\n// Place this AFTER \"Apollo People Search\"\n// ============================================\n\n// Get Apollo response for current loop iteration\nconst apolloResponse = $input.item.json;\nconst people = apolloResponse.people || [];\n\n// CRITICAL FIX: Get company data differently when in a loop\n// Option 1: Get from Apollo response itself (nested in people)\n// Option 2: Pass company data through the loop\n\n// For now, get company from the first person's organization\n// (All people are from same company in this search)\nconst org = people.length > 0 ? (people[0].organization || {}) : {};\n\n// Try to get company data from previous node\nlet companyData = {};\ntry {\n  // Try to get from Loop Over Items input\n  const loopItems = $('Loop Over Items').item.json;\n  if (loopItems) {\n    companyData = loopItems;\n  }\n} catch (e) {\n  console.log('⚠️ Could not get company from Loop Over Items');\n}\n\n// Fallback: use organization data from Apollo\nif (!companyData.company_name && org.name) {\n  companyData = {\n    company_id: org.id,\n    company_name: org.name,\n    company_domain: org.primary_domain,\n    company_employees: org.estimated_num_employees,\n    company_location: org.country,\n    company_industry: org.industry,\n    company_technologies: '',\n    company_keywords: '',\n    company_description: org.short_description || ''\n  };\n}\n\nconsole.log('✅ Processing people for company:', companyData.company_name || org.name);\nconsole.log('👥 Total people found:', people.length);\n\nif (people.length === 0) {\n  console.log('⚠️ No people found for this company!');\n  return [];\n}\n\nreturn people.map((person, index) => {\n  // Organization data nested in person response\n  const personOrg = person.organization || {};\n  \n  // Debug first person\n  if (index === 0) {\n    console.log('\\n🔍 FIRST PERSON FULL DATA:');\n    console.log('Name:', person.name);\n    console.log('Title:', person.title);\n    console.log('Seniority:', person.seniority);\n    console.log('Departments:', person.departments);\n    console.log('Subdepartments:', person.subdepartments);\n  }\n  \n  // Extract person name\n  let fullName = person.name || null;\n  if (!fullName) {\n    const firstName = person.first_name || '';\n    const lastName = person.last_name || person.last_name_obfuscated || '';\n    fullName = `${firstName} ${lastName}`.trim();\n  }\n  \n  // Extract email\n  const email = person.email || null;\n  const hasEmail = person.has_email || false;\n  \n  // Extract title and seniority\n  const title = person.title || '';\n  const seniority = person.seniority || '';\n  \n  // Extract departments\n  let departments = '';\n  let departmentsArray = [];\n  \n  if (Array.isArray(person.departments) && person.departments.length > 0) {\n    departmentsArray = person.departments;\n    departments = person.departments.join(', ');\n  } else if (Array.isArray(person.functions) && person.functions.length > 0) {\n    departmentsArray = person.functions;\n    departments = person.functions.join(', ');\n  }\n  \n  // Extract subdepartments\n  let subdepartments = '';\n  let subdepartmentsArray = [];\n  \n  if (Array.isArray(person.subdepartments) && person.subdepartments.length > 0) {\n    subdepartmentsArray = person.subdepartments;\n    subdepartments = person.subdepartments.join(', ');\n  }\n  \n  // Extract person location\n  const personLocation = person.city && person.state && person.country\n    ? `${person.city}, ${person.state}, ${person.country}`\n    : person.city && person.country\n    ? `${person.city}, ${person.country}`\n    : person.state && person.country\n    ? `${person.state}, ${person.country}`\n    : person.country || '';\n  \n  // Extract LinkedIn URL\n  const linkedinUrl = person.linkedin_url || null;\n  \n  // Log first 3 people\n  if (index < 3) {\n    console.log(`\\n👤 Person ${index + 1}: ${fullName}`);\n    console.log(`   Title: ${title}`);\n    console.log(`   Seniority: ${seniority}`);\n    console.log(`   Departments: ${departments}`);\n    console.log(`   Subdepartments: ${subdepartments}`);\n    console.log(`   Location: ${personLocation}`);\n    console.log(`   Company: ${companyData.company_name || personOrg.name}`);\n  }\n  \n  // Return person + company data\n  return {\n    json: {\n      // Person data\n      person_id: person.id,\n      person_name: fullName,\n      person_first_name: person.first_name,\n      person_last_name: person.last_name || person.last_name_obfuscated,\n      person_location: personLocation,\n      person_title: title,\n      person_seniority: seniority,\n      \n      // Department fields\n      person_departments: departments,\n      person_departments_array: departmentsArray,\n      person_subdepartments: subdepartments,\n      person_subdepartments_array: subdepartmentsArray,\n      person_functions: person.functions || [],\n      \n      person_email: email,\n      person_has_email: hasEmail,\n      person_linkedin_url: linkedinUrl,\n      \n      // Company data - prefer passed data, fallback to Apollo org\n      company_id: companyData.company_id || personOrg.id,\n      company_name: companyData.company_name || personOrg.name,\n      company_domain: companyData.company_domain || personOrg.primary_domain,\n      company_employees: companyData.company_employees || personOrg.estimated_num_employees,\n      company_location: companyData.company_location || personOrg.country,\n      company_industry: companyData.company_industry || personOrg.industry,\n      company_technologies: companyData.company_technologies || '',\n      company_keywords: companyData.company_keywords || '',\n      company_description: companyData.company_description || personOrg.short_description || ''\n    }\n  };\n});\n\nconsole.log(`\\n✅ Extracted ${people.length} people with all data`);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13104,
+        -80
+      ],
+      "id": "62721c44-9057-48dd-85e0-9c8c2f65c9ff",
+      "name": "Extract People"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ============================================\n// PARSE PERSONA VALIDATION - WITH SUBDEPARTMENTS\n// ============================================\n\nconst item = $input.item.json;\n\n// Get the AI response from the LLM\nlet aiResponse = item.text || item.output || '';\naiResponse = aiResponse.replace(/```json\\n?|\\n?```/g, '').trim();\n\nlet parsed;\ntry {\n  parsed = JSON.parse(aiResponse);\n} catch (e) {\n  console.log('❌ Failed to parse AI response');\n  parsed = { approved: false, reason: 'AI response parsing failed' };\n}\n\n// Get the ORIGINAL person data from \"Extract People\" node\nconst originalPersonData = $('Extract People').item.json;\n\nconsole.log('👤 Person ID from original:', originalPersonData.person_id);\nconsole.log('📛 Person Name:', originalPersonData.person_name);\nconsole.log('🎯 Persona Decision:', parsed.approved ? 'APPROVED' : 'REJECTED');\nconsole.log('🏢 Departments:', originalPersonData.person_departments);\nconsole.log('📂 Subdepartments:', originalPersonData.person_subdepartments);\nconsole.log('⭐ Seniority:', originalPersonData.person_seniority);\n\nreturn {\n  json: {\n    // Person data from Extract People\n    person_id: originalPersonData.person_id,\n    person_name: originalPersonData.person_name,\n    person_first_name: originalPersonData.person_first_name,\n    person_last_name: originalPersonData.person_last_name,\n    person_title: originalPersonData.person_title,\n    person_seniority: originalPersonData.person_seniority,\n    \n    // ✅ DEPARTMENTS - ALL FIELDS\n    person_departments: originalPersonData.person_departments,\n    person_departments_array: originalPersonData.person_departments_array,\n    person_subdepartments: originalPersonData.person_subdepartments,           // ✅ ADDED\n    person_subdepartments_array: originalPersonData.person_subdepartments_array, // ✅ ADDED\n    person_functions: originalPersonData.person_functions,                      // ✅ ADDED\n    \n    person_email: originalPersonData.person_email,\n    person_has_email: originalPersonData.person_has_email,\n    person_linkedin_url: originalPersonData.person_linkedin_url,\n    \n    // Company data from Extract People\n    company_id: originalPersonData.company_id,\n    company_name: originalPersonData.company_name,\n    company_domain: originalPersonData.company_domain,\n    company_employees: originalPersonData.company_employees,\n    company_location: originalPersonData.company_location,\n    company_industry: originalPersonData.company_industry,\n    company_technologies: originalPersonData.company_technologies,\n    company_keywords: originalPersonData.company_keywords,\n    company_description: originalPersonData.company_description,\n    \n    // Validation results\n    persona_approved: parsed.approved,\n    persona_validation_reason: parsed.reason\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13632,
+        -80
+      ],
+      "id": "188bab9b-7107-4b43-8345-66f1498d31e3",
+      "name": "Parse Persona Validation"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.apollo.io/api/v1/people/match",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "reveal_email",
+              "value": "true"
+            },
+            {
+              "name": "person_id",
+              "value": "={{ $json.person_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        14144,
+        -96
+      ],
+      "id": "ad6704e4-d29c-4fbe-9b7c-b8091ea7252f",
+      "name": "Apollo People Enrich (with emails)",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tppNUuht6CeIC4Mf",
+          "name": "new Hubcreo outreach-apollo key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ============================================\n// FORMAT FINAL DATA - PROPER VERSION\n// ============================================\n\n// Get Apollo enrichment response\nconst apolloResponse = $input.item.json;\nconst person = apolloResponse.person || {};\nconst org = person.organization || {};\n\n// Extract email and CLEAN IT\nlet email = person.email || '';\nemail = email.replace(/\"/g, '').replace(/'/g, '').trim();\n\nconst phone = person.phone_numbers?.[0]?.sanitized_number || person.mobile_phone || '';\n\n// Extract departments\nlet departments = '';\nif (Array.isArray(person.departments)) {\n  departments = person.departments.join(', ');\n} else if (Array.isArray(person.functions)) {\n  departments = person.functions.join(', ');\n}\n\n// Extract subdepartments\nlet subdepartments = '';\nif (Array.isArray(person.subdepartments)) {\n  subdepartments = person.subdepartments.join(', ');\n}\n\n// Extract person location\nconst personLocation = person.city && person.state && person.country\n  ? `${person.city}, ${person.state}, ${person.country}`\n  : person.city && person.country\n  ? `${person.city}, ${person.country}`\n  : person.state && person.country\n  ? `${person.state}, ${person.country}`\n  : person.country || '';\n\nconsole.log('📄 FORMAT FINAL DATA - Processing:', person.name);\nconsole.log('🏢 Company from Apollo:', org.name);\nconsole.log('🆔 Company ID from Apollo:', org.id);\nconsole.log('📍 Person Location:', personLocation);\nconsole.log('📂 Subdepartments:', subdepartments);\n\n// ============================================\n// Get PERSONA validation\n// ============================================\nconst allPersonaData = $('Parse Persona Validation').all();\nconst personaData = allPersonaData.find(item => item.json.person_id === person.id);\nconst persona = personaData ? personaData.json : {};\n\nconsole.log('👤 Persona Approved:', persona.persona_approved);\n\n// ============================================\n// Get COMPANY validation - SIMPLIFIED MATCHING\n// ============================================\nconst allCompanyData = $('Parse Company Validation').all();\n\nconsole.log('\\n🔍 COMPANY MATCHING DEBUG:');\nconsole.log('Total companies in Parse Company Validation:', allCompanyData.length);\nconsole.log('Looking for company ID:', org.id);\n\n// Simple ID-based matching (most reliable)\nlet companyData = allCompanyData.find(item => {\n  const match = String(item.json.company_id) === String(org.id);\n  if (match) {\n    console.log('✅ MATCH FOUND by ID:', item.json.company_name);\n  }\n  return match;\n});\n\n// If no ID match, try domain matching\nif (!companyData) {\n  const orgDomain = (org.primary_domain || org.domain || '').toLowerCase().trim();\n  console.log('⚠️ No ID match, trying domain:', orgDomain);\n  \n  companyData = allCompanyData.find(item => {\n    const itemDomain = (item.json.company_domain || '').toLowerCase().trim();\n    const match = orgDomain && itemDomain && orgDomain === itemDomain;\n    if (match) {\n      console.log('✅ MATCH FOUND by domain:', item.json.company_name);\n    }\n    return match;\n  });\n}\n\n// If still no match, try name matching\nif (!companyData) {\n  const orgName = (org.name || '').toLowerCase().trim();\n  console.log('⚠️ No domain match, trying name:', orgName);\n  \n  companyData = allCompanyData.find(item => {\n    const itemName = (item.json.company_name || '').toLowerCase().trim();\n    const match = orgName && itemName && orgName === itemName;\n    if (match) {\n      console.log('✅ MATCH FOUND by name:', item.json.company_name);\n    }\n    return match;\n  });\n}\n\nconst company = companyData ? companyData.json : {};\n\nif (!companyData) {\n  console.log('❌ ERROR: NO COMPANY MATCH FOUND!');\n  console.log('Available company IDs:', allCompanyData.map(c => c.json.company_id).join(', '));\n  console.log('Available company names:', allCompanyData.map(c => c.json.company_name).join(', '));\n} else {\n  console.log('\\n✅ COMPANY DATA RETRIEVED:');\n  console.log('   Name:', company.company_name);\n  console.log('   ID:', company.company_id);\n  console.log('   Domain:', company.company_domain);\n  console.log('   🔧 Technologies:', company.company_technologies || 'EMPTY STRING');\n  console.log('   🏷️ Keywords:', company.company_keywords || 'EMPTY STRING');\n  console.log('   ✅ Approved:', company.company_approved);\n}\n\n// ============================================\n// RETURN COMPLETE DATA\n// ============================================\nreturn {\n  json: {\n    // Person data\n    person_id: person.id,\n    person_name: person.name || `${person.first_name} ${person.last_name}`.trim(),\n    person_first_name: person.first_name,\n    person_last_name: person.last_name,\n    person_title: person.title,\n    person_seniority: person.seniority,\n    person_location: personLocation,\n    person_departments: departments,\n    person_subdepartments: subdepartments,\n    person_linkedin_url: person.linkedin_url,\n    email: email,\n    person_phone: phone,\n    \n    // Company data - ALL from Parse Company Validation\n    company_id: company.company_id || org.id,\n    company_name: company.company_name || org.name,\n    company_domain: company.company_domain || org.primary_domain,\n    company_location: company.company_location || org.country,\n    company_employees: company.company_employees || org.estimated_num_employees,\n    company_industry: company.company_industry || org.industry,\n    company_description: company.company_description || org.short_description || '',\n    \n    // ✅ CRITICAL: Technologies and keywords from Parse Company Validation\n    company_technologies: company.company_technologies || '',\n    company_keywords: company.company_keywords || '',\n    \n    // Approval statuses\n    company_approved: company.company_approved !== undefined ? company.company_approved : true,\n    company_validation_reason: company.company_validation_reason || 'Approved',\n    persona_approved: persona.persona_approved !== undefined ? persona.persona_approved : true,\n    persona_validation_reason: persona.persona_validation_reason || 'Approved'\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14400,
+        -96
+      ],
+      "id": "7b4a73d4-ca8d-4e68-b8e1-6382ff70345e",
+      "name": "Format Final Data"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apollo.io/api/v1/organizations/enrich",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"domain\": \"wizni.com\",\n  \"reveal_technologies\": true\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        11296,
+        -64
+      ],
+      "id": "e8929e9d-eed1-43f7-8e7a-33150c391e01",
+      "name": "Company Enrich",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tppNUuht6CeIC4Mf",
+          "name": "new Hubcreo outreach-apollo key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract ICP Node - PROPERLY HANDLING TECHNOLOGIES\n// Technologies need to be intelligently parsed and converted to snake_case\n\nconst formData = $input.all()[0].json;\n\n// ===== COMPANY FILTERS =====\n\n// Parse company locations (comma or newline separated) and convert to lowercase\nconst companyLocations = formData['Company Locations']\n  .split(/[,\\n]/)\n  .map(loc => loc.trim().toLowerCase())\n  .filter(loc => loc.length > 0);\n\n// Parse employee ranges and format as \"min,max\" for Apollo\nconst companyEmployees = formData['Employee Ranges'].map(range => {\n  // Convert \"51-100\" to \"51,100\" format\n  return range.replace('-', ',');\n});\n\n// Parse company keywords (newline separated) and convert to lowercase\nconst companyKeywords = formData['Company Keywords']\n  .split(/\\n/)\n  .map(keyword => keyword.trim().toLowerCase())\n  .filter(keyword => keyword.length > 0);\n\n// Parse industries (newline separated) and convert to lowercase\nconst companyIndustries = formData['Industries']\n  .split(/\\n/)\n  .map(industry => industry.trim().toLowerCase())\n  .filter(industry => industry.length > 0);\n\n// Parse technologies - Convert to snake_case format\n// Input: \"Amazon AWS Google Cloud Hosting Microsoft Azure REST APIs GraphQL Headless CMS Microservices Docker\"\n// Output: [\"amazon_aws\", \"google_cloud_hosting\", \"microsoft_azure\", \"rest_apis\", \"graphql\", \"headless_cms\", \"microservices\", \"docker\"]\n\n// Known multi-word technologies mapping\nconst techMapping = {\n  'amazon aws': 'amazon_aws',\n  'google cloud hosting': 'google_cloud_hosting',\n  'microsoft azure': 'microsoft_azure',\n  'rest apis': 'rest_apis',\n  'headless cms': 'headless_cms',\n};\n\nconst techString = formData['Technologies'].toLowerCase();\nconst companyTechnologies = [];\n\n// First, try to match multi-word technologies\nlet remainingTech = techString;\nObject.keys(techMapping).forEach(multiWord => {\n  if (remainingTech.includes(multiWord)) {\n    companyTechnologies.push(techMapping[multiWord]);\n    remainingTech = remainingTech.replace(multiWord, '');\n  }\n});\n\n// Then add single-word technologies\nconst singleWords = remainingTech.split(/\\s+/).filter(w => w.length > 0);\nsingleWords.forEach(word => {\n  if (word.trim().length > 0) {\n    companyTechnologies.push(word.trim());\n  }\n});\n\n// ===== PERSON FILTERS =====\n\n// Parse job titles (newline separated) - these are management levels\nconst jobTitles = formData['Job Title']\n  .split(/\\n/)\n  .map(title => title.trim().toLowerCase())\n  .filter(title => title.length > 0 && !title.includes(':') && !title.includes('management level'));\n\n// Parse departments (newline separated) and break down into keywords\nconst departments = formData['Target Departments and Job Function']\n  .split(/\\n/)\n  .map(dept => dept.trim())\n  .filter(dept => dept.length > 0);\n\n// Store original departments for person_departments field\nconst personDepartments = [...departments];\n\n// Break down departments into individual keywords for person_titles\nconst departmentKeywords = [];\ndepartments.forEach(dept => {\n  const deptLower = dept.toLowerCase();\n  departmentKeywords.push(deptLower);\n  \n  // Also add individual words from multi-word departments\n  const words = deptLower.split(/\\s+and\\s+|\\s+/);\n  words.forEach(word => {\n    if (word.length > 2 && !['and', 'the'].includes(word)) {\n      departmentKeywords.push(word);\n    }\n  });\n});\n\n// COMBINE job titles + departments into person_titles array\nconst personTitles = [\n  ...jobTitles,\n  ...departmentKeywords\n].filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates\n\n// ===== OUTPUT =====\n\nreturn {\n  json: {\n    // Company filters\n    company_locations: companyLocations,\n    company_employees: companyEmployees,\n    company_keywords: companyKeywords,\n    company_industries: companyIndustries,\n    company_technologies: companyTechnologies,\n    \n    // Person filters\n    person_titles: personTitles,\n    person_departments: personDepartments,\n    \n    // Keep raw data for debugging/reference\n    _raw: {\n      locations: formData['Company Locations'],\n      employees: formData['Employee Ranges'],\n      keywords: formData['Company Keywords'],\n      industries: formData['Industries'],\n      technologies: formData['Technologies'],\n      titles: formData['Job Title'],\n      departments: formData['Target Departments and Job Function']\n    }\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10752,
+        -64
+      ],
+      "id": "413303ec-c76a-47a4-8b78-6b02dc4d4ab2",
+      "name": "Extract ICP"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// EXTRACT ENRICHED COMPANY DATA - FIXED\n// Now properly extracts technologies from Apollo response\n// ============================================\n\nconst inputData = $input.all();\n\nconsole.log('🔥 EXTRACTING ENRICHED COMPANY DATA...');\nconsole.log(`📦 Total input items: ${inputData.length}`);\n\n// Get original company data from \"Extract Companies\" node\nconst originalCompanies = $('Extract Companies').all();\nconsole.log(`📋 Original companies count: ${originalCompanies.length}`);\n\n// Apollo Company Enrich returns data in different formats\nlet enrichedOrganizations = [];\n\n// Case 1: Single response with \"organization\" field (single company enrich)\nif (inputData.length === 1 && inputData[0].json.organization) {\n  enrichedOrganizations = [inputData[0].json.organization];\n  console.log('✅ Format: Single organization object');\n}\n// Case 2: Single response with \"organizations\" array (batch enrich)\nelse if (inputData.length === 1 && inputData[0].json.organizations) {\n  enrichedOrganizations = inputData[0].json.organizations;\n  console.log(`✅ Format: Organizations array with ${enrichedOrganizations.length} companies`);\n}\n// Case 3: Multiple individual responses\nelse if (inputData.length > 1) {\n  enrichedOrganizations = inputData.map(item => item.json.organization || item.json).filter(Boolean);\n  console.log(`✅ Format: Multiple individual responses, ${enrichedOrganizations.length} companies`);\n}\n// Case 4: Direct organizations in input\nelse if (inputData.length === 1 && Array.isArray(inputData[0].json)) {\n  enrichedOrganizations = inputData[0].json;\n  console.log(`✅ Format: Direct array, ${enrichedOrganizations.length} companies`);\n}\n\nconsole.log(`\\n📊 Total enriched organizations found: ${enrichedOrganizations.length}`);\n\nif (enrichedOrganizations.length === 0) {\n  console.log('❌ ERROR: No organizations found in enrichment response!');\n  console.log('Raw input structure:', JSON.stringify(inputData[0]?.json, null, 2).substring(0, 500));\n  return [];\n}\n\n// Process each enriched organization\nreturn enrichedOrganizations.map((enrichedOrg, index) => {\n  \n  // Find matching original company data by domain or name\n  const orgDomain = (enrichedOrg.primary_domain || enrichedOrg.website_url || '')\n    .replace(/^https?:\\/\\//, '')\n    .replace(/^www\\./, '')\n    .replace(/\\/$/, '')\n    .trim();\n  \n  const originalData = originalCompanies.find(orig => {\n    const origDomain = (orig.json.company_domain || '').toLowerCase();\n    const enrichDomain = orgDomain.toLowerCase();\n    const origName = (orig.json.company_name || '').toLowerCase();\n    const enrichName = (enrichedOrg.name || '').toLowerCase();\n    \n    return origDomain === enrichDomain || origName === enrichName;\n  })?.json || {};\n  \n  // ==========================================\n  // EXTRACT COMPANY DATA\n  // ==========================================\n  \n  const companyName = enrichedOrg.name || originalData.company_name || 'Unknown Company';\n  \n  let companyDomain = enrichedOrg.primary_domain || enrichedOrg.website_url || originalData.company_domain || '';\n  companyDomain = companyDomain\n    .replace(/^https?:\\/\\//, '')\n    .replace(/^www\\./, '')\n    .replace(/\\/$/, '')\n    .trim();\n  \n  // ==========================================\n  // EXTRACT EMPLOYEE SIZE\n  // ==========================================\n  let employeeSize = null;\n  \n  const empSources = [\n    enrichedOrg.estimated_num_employees,\n    enrichedOrg.employee_count,\n    enrichedOrg.num_employees,\n    enrichedOrg.size\n  ];\n  \n  for (let emp of empSources) {\n    if (emp !== undefined && emp !== null) {\n      if (typeof emp === 'string') {\n        const match = emp.match(/(\\d+)/);\n        if (match) {\n          employeeSize = parseInt(match[1]);\n          break;\n        }\n      } else if (typeof emp === 'number') {\n        employeeSize = parseInt(emp);\n        break;\n      }\n    }\n  }\n  \n  // Fallback to original\n  if (!employeeSize && originalData.company_employees) {\n    employeeSize = originalData.company_employees;\n  }\n  \n  // ==========================================\n  // EXTRACT LOCATION\n  // ==========================================\n  const companyLocation = \n    enrichedOrg.country || \n    enrichedOrg.city || \n    enrichedOrg.organization_country ||\n    originalData.company_location || \n    'Unknown';\n  \n  // ==========================================\n  // EXTRACT INDUSTRY\n  // ==========================================\n  const companyIndustry = \n    enrichedOrg.industry || \n    enrichedOrg.primary_industry || \n    originalData.company_industry || \n    'Technology';\n  \n  // ==========================================\n  // EXTRACT TECHNOLOGIES - FIXED VERSION\n  // Apollo returns technologies in format:\n  // [{ uid: \"drift\", name: \"Drift\", category: \"Widgets\" }, ...]\n  // ==========================================\n  let techArray = [];\n  \n  // Check multiple possible locations for technology data\n  const techSources = [\n    enrichedOrg.technologies,\n    enrichedOrg.current_technologies,\n    enrichedOrg.technology_names,\n    enrichedOrg.tech_stack\n  ];\n  \n  for (let techSource of techSources) {\n    if (Array.isArray(techSource) && techSource.length > 0) {\n      techArray = techSource.map(t => {\n        // If it's a string, return as is\n        if (typeof t === 'string') return t;\n        \n        // If it's an object with 'name' property (Apollo format)\n        if (t && typeof t === 'object') {\n          if (t.name) return t.name;\n          if (t.uid) return t.uid;\n          if (t.technology) return t.technology;\n        }\n        \n        return null;\n      }).filter(Boolean);\n      \n      // If we found technologies, stop looking\n      if (techArray.length > 0) break;\n    }\n  }\n  \n  // Convert to comma-separated string\n  const techString = techArray.length > 0 \n    ? techArray.join(', ') \n    : (originalData.company_technologies || '');\n  \n  // ==========================================\n  // EXTRACT KEYWORDS - KEEP ORIGINAL\n  // ==========================================\n  const keywordsString = originalData.company_keywords || '';\n  \n  // ==========================================\n  // EXTRACT DESCRIPTION\n  // ==========================================\n  const description = \n    enrichedOrg.short_description || \n    enrichedOrg.description || \n    enrichedOrg.tagline || \n    originalData.company_description || \n    `${companyName} is a technology company`;\n  \n  // ==========================================\n  // LOG FIRST 5 COMPANIES\n  // ==========================================\n  if (index < 5) {\n    console.log(`\\n${'='.repeat(60)}`);\n    console.log(`✅ ENRICHED COMPANY ${index + 1}:`);\n    console.log(`${'='.repeat(60)}`);\n    console.log(`🏢 Name: ${companyName}`);\n    console.log(`🌐 Domain: ${companyDomain}`);\n    console.log(`👥 Employees: ${employeeSize || '❌ NOT FOUND'}`);\n    console.log(`📍 Location: ${companyLocation}`);\n    console.log(`🏭 Industry: ${companyIndustry}`);\n    console.log(`🔧 Technologies (${techArray.length} found): ${techString.substring(0, 80) || '❌ NONE'}...`);\n    console.log(`🏷️ Keywords: ${keywordsString.substring(0, 50) || '❌ NONE'}...`);\n    console.log(`📝 Description: ${description.substring(0, 100)}...`);\n    \n    // Debug: Show raw technology object structure\n    if (index === 0 && enrichedOrg.technologies) {\n      console.log('\\n🔍 DEBUG - First tech object:', JSON.stringify(enrichedOrg.technologies[0], null, 2));\n    }\n  }\n  \n  // ==========================================\n  // RETURN ENRICHED COMPANY DATA\n  // ==========================================\n  return {\n    json: {\n      company_id: enrichedOrg.id || originalData.company_id,\n      company_name: companyName,\n      company_domain: companyDomain,\n      company_employees: employeeSize,\n      company_location: companyLocation,\n      company_industry: companyIndustry,\n      company_technologies: techString,\n      company_keywords: keywordsString,\n      company_description: description\n    }\n  };\n});\n\nconsole.log(`\\n✅ Successfully enriched ${enrichedOrganizations.length} companies!`);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        11504,
+        -64
+      ],
+      "id": "ea07c069-7945-41bc-9bb7-cb8d0ad17912",
+      "name": "Format Company Data"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "634d37be-dea2-4ddb-ad87-2bab1fdcf8a7",
+              "leftValue": "={{ $json.company_approved }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        12320,
+        -64
+      ],
+      "id": "b9600e08-24dd-42c3-9d65-c5c292bc4d42",
+      "name": "Company Approval Filter"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "95101758-a46b-4f51-b599-143571f2cb91",
+              "leftValue": "={{ $json.persona_approved }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        13904,
+        -80
+      ],
+      "id": "9ac0a4dc-6aba-4ce2-ada4-055977fdfaae",
+      "name": "Persona Approval Filter"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get all items from Format Final Data\nconst allItems = $input.all();\n\n// Extract all emails into an array\nconst emails = allItems\n  .map(item => item.json.email)\n  .filter(email => email && email.length > 0);\n\nconsole.log(`📧 Collected ${emails.length} emails for bulk verification`);\n\n// Return single item with emails array\nreturn [{\n  json: {\n    emails: emails,\n    total_count: emails.length\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        14608,
+        -96
+      ],
+      "id": "4d12e57b-6905-4ae3-8c62-1456754bb2b3",
+      "name": "Pre Email Verification"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// CODE NODE - MERGE BULK VERIFICATION RESULTS\n// Place this AFTER Reoon Bulk Fetch\n// ============================================\n\n// Get the bulk verification results\nconst bulkResults = $input.item.json;\n\n// Check if task is still processing\nif (bulkResults.status === 'processing') {\n  console.log('⏳ Task still processing. Wait and retry.');\n  throw new Error('Task still processing - retry needed');\n}\n\n// Get results object (email -> verification data)\nconst verificationResults = bulkResults.results || {};\n\n// Get original person data from Format Final Data\nconst allOriginalData = $('Format Final Data').all();\n\nconsole.log(`✅ Bulk verification completed!`);\nconsole.log(`📧 Total emails checked: ${bulkResults.count_checked}`);\nconsole.log(`✅ Progress: ${bulkResults.progress_percentage}%`);\n\n// IMPORTANT: Results is an OBJECT where keys are email addresses\n// Example: { \"email@domain.com\": { status: \"safe\", ... } }\n\n// Merge verification results with original data\nconst mergedData = allOriginalData.map(item => {\n  const email = (item.json.email || '').toLowerCase().trim();\n  const verification = verificationResults[email] || {};\n  \n  // Extract status\n  let emailStatus = 'unknown';\n  if (verification.status) {\n    emailStatus = verification.status.toLowerCase();\n  } else if (verification.is_safe_to_send) {\n    emailStatus = 'safe';\n  } else if (verification.is_deliverable === false) {\n    emailStatus = 'invalid';\n  }\n  \n  console.log(`📧 ${email} → ${emailStatus}`);\n  \n  return {\n    json: {\n      // Email verification status\n      email_status: emailStatus,\n      \n      // All original person data\n      ...item.json,\n      \n      // Additional verification details\n      is_safe_to_send: verification.is_safe_to_send || false,\n      is_disposable: verification.is_disposable || false,\n      is_deliverable: verification.is_deliverable || false,\n      overall_score: verification.overall_score || '0'\n    }\n  };\n});\n\nconsole.log(`\\n✅ Merged ${mergedData.length} records with verification status`);\n\nreturn mergedData;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        15440,
+        -96
+      ],
+      "id": "1392cc54-c993-408e-89cb-57cf2baba763",
+      "name": "Post Email Verification"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ============================================\n// MERGE FINAL DATA - PROPER FIELD ORDER\n// ============================================\n\nconst item = $input.item.json;\n\nconsole.log('📊 === MERGE FINAL DATA ===');\nconsole.log('✉️ Email Status:', item.email_status);\nconsole.log('📧 Email:', item.email);\nconsole.log('👤 Person:', item.person_name);\nconsole.log('📍 Person Location:', item.person_location);\nconsole.log('🏢 Company:', item.company_name);\nconsole.log('📍 Company Location:', item.company_location);\nconsole.log('📂 Subdepartments:', item.person_subdepartments);\nconsole.log('🔧 Technologies:', item.company_technologies);\nconsole.log('🏷️ Keywords:', item.company_keywords);\nconsole.log('📝 Description:', item.company_description ? item.company_description.substring(0, 100) : 'MISSING');\nconsole.log('✅ Company Approved:', item.company_approved);\nconsole.log('👤 Persona Approved:', item.persona_approved);\n\n// Build the final output for Google Sheets with proper field order\nreturn {\n  json: {\n    // Person Information\n    'Name': item.person_name || '',\n    'Designation': item.person_title || '',\n    'Person Seniority': item.person_seniority || '',\n    'Person Department': item.person_departments || '',\n    'Person Subdepartment': item.person_subdepartments || '',\n    'Person Location': item.person_location || '',\n    'LinkedIn URL': item.person_linkedin_url || '',\n    \n    // Contact Information\n    'Email Id': item.email || '',\n    'Email Verification Status': item.email_status || 'unknown',\n    'Phone': item.person_phone || '',\n    \n    // Company Information\n    'Company Name': item.company_name || '',\n    'Company Domain': item.company_domain || '',\n    'Employee Size': item.company_employees || '',\n    'Company Location': item.company_location || '',\n    'Company Industry': item.company_industry || '',\n    \n    // Technologies and Keywords\n    'Company Technologies': item.company_technologies || '',\n    'Company Keywords': item.company_keywords || '',\n    \n    // Approval Statuses\n    'Company Approved': item.company_approved ? 'Yes' : 'No',\n    'Company Validation Reason': item.company_validation_reason || '',\n    'Persona Approved': item.persona_approved ? 'Yes' : 'No',\n    'Persona Validation Reason': item.persona_validation_reason || '',\n    \n    // Company Description (at the very end)\n    'Company Description': item.company_description || ''\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        15680,
+        -96
+      ],
+      "id": "b6c3f44e-e325-4d0c-9b5f-03e21b2cbdc7",
+      "name": "Merge Final Data"
+    },
+    {
+      "parameters": {
+        "url": "=https://emailverifier.reoon.com/api/v1/get-result-bulk-verification-task/?key=Xi8eAlH2eQT214HsoBfXOo64J6mUw0qg&task_id={{ $json.task_id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        15232,
+        -96
+      ],
+      "id": "f8e66eda-657f-43d5-9cc4-1a0d0a8ba0c3",
+      "name": "Get Email Verification Results"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4baceede-aeb8-42d8-85a4-2084221adf12",
+              "name": "company_domain",
+              "value": "={{ $json.company_domain }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        12528,
+        -80
+      ],
+      "id": "ddf06dbc-e55e-495f-80a0-9a157dc87654",
+      "name": "Prepare Company Domains"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================\n// APOLLO MIXED PEOPLE SEARCH - 100% DYNAMIC\n// Uses ICP data to build search body\n// ============================================\n\nconst items = $input.all();\n\nconsole.log('🔍 Building Apollo People Search request...');\nconsole.log('📦 Input items:', items.length);\n\n// ==========================================\n// GET ICP DATA FROM EXTRACT ICP NODE\n// ==========================================\nconst icpData = $('Extract ICP').item.json;\n\nconsole.log('📋 ICP Data loaded:');\nconsole.log('   Titles:', icpData.person_titles?.length || 0);\nconsole.log('   Locations:', icpData.company_locations?.length || 0);\n\n// ==========================================\n// EXTRACT COMPANY DOMAINS FROM INPUT\n// ==========================================\nconst allDomains = Array.from(new Set(\n  items\n    .map(it => {\n      const domain = String(it.json?.company_domain || '').trim();\n      if (!domain) return '';\n      \n      // Clean domain if it has protocol or www\n      try {\n        // If it looks like a URL, parse it\n        if (domain.includes('://')) {\n          const url = new URL(domain);\n          return url.hostname.replace(/^www\\./, '');\n        }\n        // Otherwise just clean it\n        return domain.replace(/^www\\./, '').trim();\n      } catch (e) {\n        // Fallback: manual cleaning\n        return domain\n          .replace(/^https?:\\/\\//i, '')\n          .replace(/^www\\./, '')\n          .split('/')[0]\n          .trim();\n      }\n    })\n    .filter(d => d && d.includes('.'))\n));\n\nconsole.log('🌐 Extracted domains:', allDomains.length);\nconsole.log('   Sample domains:', allDomains.slice(0, 3));\n\n// Guard\nif (allDomains.length === 0) {\n  console.log('❌ No valid domains found!');\n  return [{ json: { error: 'No valid domains found' } }];\n}\n\n// ==========================================\n// BUILD DYNAMIC SEARCH BODY\n// ==========================================\n\n// Person titles from ICP (already combined with department keywords)\nconst titles = icpData.person_titles || [];\n\n// Person locations from ICP (ALL locations, not just first)\n// NOTE: We're filtering by company domain already, so location is optional\n// Only add if you want to restrict by person's personal location\nconst personLocations = icpData.company_locations || [];\n\n// Build POST body\nconst body = {\n  person_titles: titles,\n  person_current_titles: titles,\n  q_organization_domains_list: allDomains,\n  page: 1,\n  per_page: 100\n};\n\n// ==========================================\n// OPTIONAL: Add person_locations filter\n// ==========================================\n// Only add person_locations if you want to filter by where people live\n// Since you're already filtering by company domain, this is usually NOT needed\n// Uncomment the line below if you want to filter by person location too:\n\n// body.person_locations = personLocations;\n\nconsole.log('\\n✅ Apollo Search Body built:');\nconsole.log('   Titles:', titles.length);\nconsole.log('   Domains:', allDomains.length);\nconsole.log('   Person Locations filter:', body.person_locations ? 'ENABLED' : 'DISABLED');\nconsole.log('   Per page:', body.per_page);\n\n// ==========================================\n// RETURN FOR HTTP REQUEST NODE\n// ==========================================\nreturn [{\n  json: {\n    url: 'https://api.apollo.io/api/v1/mixed_people/api_search',\n    \n    method: 'POST',\n    body,\n    \n    // Metadata for debugging\n    processedDomainCount: allDomains.length,\n    processedDomains: allDomains,\n    targetTitles: titles.length,\n    targetTitlesPreview: titles.slice(0, 5),\n    locationFilter: body.person_locations || 'NONE (domain filter only)',\n    icpSource: 'Extract ICP node'\n  }\n}];\n\nconsole.log('\\n🚀 Ready to send to Apollo API!');"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12720,
+        -80
+      ],
+      "id": "20e76999-4423-4c7f-b802-4a0305742c91",
+      "name": "Build Apollo People Search"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        12912,
+        -80
+      ],
+      "id": "d21dadb1-78f5-4010-956a-ac16dc8b07d1",
+      "name": "Apollo People Search",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tppNUuht6CeIC4Mf",
+          "name": "new Hubcreo outreach-apollo key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=ICP CRITERIA TO MATCH:\n\nALLOWED LOCATIONS (must match one):\n{{ $('Extract ICP').item.json.company_locations.join(', ') }}\n\nEMPLOYEE SIZE RANGES (must fall within one range):\n{{ $('Extract ICP').item.json.company_employees.join(', ') }}\n\nREQUIRED KEYWORDS (must match at least ONE):\n{{ $('Extract ICP').item.json.company_keywords.join(', ') }}\n\nTARGET INDUSTRIES (preferred but not mandatory):\n{{ $('Extract ICP').item.json.company_industries.join(', ') }}\n\nTECHNOLOGIES (must match at least ONE):\n{{ $('Extract ICP').item.json.company_technologies.join(', ') }}\n\nIMPORTANT MATCHING INSTRUCTIONS:\n- Match \"gitlab\" (ICP) with \"GitLab\" (company) ✅\n- Match \"amazon_aws\" (ICP) with \"Amazon AWS\" or \"AWS\" (company) ✅\n- Match \"docker\" (ICP) with \"Docker\" (company) ✅\n- When you find a match, return the ICP format (lowercase_underscore) in matched_technologies\n- Example: If company has \"GitLab\", return \"gitlab\" in your matched_technologies array\n\n---\n\nCOMPANY DATA TO VALIDATE:\n\nCompany Name: {{ $json.company_name }}\nCompany Domain: {{ $json.company_domain }}\nEmployee Count: {{ $json.company_employees }}\nCompany Location: {{ $json.company_location }}\nCompany Industry: {{ $json.company_industry }}\nCompany Keywords: {{ $json.company_keywords }}\nCompany Technologies: {{ $json.company_technologies }}\nCompany Description: {{ $json.company_description }}\n\n---\n\nTASK:\nValidate this company against the ICP criteria. Check:\n1. Does location match allowed locations? (STRICT)\n2. Is employee count within allowed ranges? (STRICT)\n3. Does company match at least ONE keyword or technology? (STRICT)\n4. Does industry align? (NICE TO HAVE)\n\nRespond with JSON only - no markdown, no backticks.\n",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=You are a strict ICP (Ideal Customer Profile) validator for B2B company qualification.\n\nYour ONLY job is to validate if a company matches the ICP criteria. This is NOT about people, roles, or contacts - only about the COMPANY itself.\n\nSTRICT VALIDATION RULES - ALL MUST PASS:\n\n1. LOCATION (MANDATORY - ZERO TOLERANCE)\n   - Company location MUST exactly match one of the allowed ICP locations\n   - Country-level match is sufficient (e.g., \"California, US\" matches \"United States\")\n   - If location is missing or doesn't match ANY allowed location → REJECT IMMEDIATELY\n   - NO EXCEPTIONS\n\n2. EMPLOYEE SIZE (MANDATORY - ZERO TOLERANCE)\n   - Employee count MUST fall within at least ONE of the allowed ranges\n   - Range format: \"50-5000\" means minimum 50 and maximum 5000 employees\n-IMPORTANT: Range boundaries are INCLUSIVE. \"2001-5000\" includes both 2001 AND 5000 exactly\n   - If company has exactly 5000 employees and range is \"X-5000\" → APPROVE\n   - If employee count is null, missing, or zero → REJECT IMMEDIATELY\n   - If employee count is outside ALL allowed ranges → REJECT IMMEDIATELY\n   - NO EXCEPTIONS\n\n3. KEYWORDS OR TECHNOLOGIES (AT LEAST ONE MATCH REQUIRED)\n   - Company MUST match at least ONE keyword OR ONE technology from the ICP lists\n  - IMPORTANT - RETURN MATCHED ITEMS:\n      In your approval reason, you MUST list which specific keywords and technologies matched.\nFormat: \"Match: API (keyword), AWS (tech), Kubernetes (tech)\"\n   - Search in: company description, keywords field, technologies field, industry name\n   - Be intelligent about related terms:\n     * \"API\" includes: API Gateway, REST API, GraphQL, API Management, API Platform\n     * \"Cloud\" includes: AWS, Azure, GCP, Cloud Computing, Cloud Infrastructure\n     * \"DevOps\" includes: CI/CD, Jenkins, GitLab, Kubernetes, Docker, DevOps Platform\n     * \"Microservices\" includes: Containers, Service Mesh, Distributed Systems\n     * \"Digital Transformation\" includes: Cloud Migration, Modernization, Cloud Native\n   - If there is ZERO keyword/technology relevance → REJECT\n   - When in doubt about keyword matching, be slightly lenient if the company seems relevant\n\nCRITICAL - MATCHED ITEMS ONLY:\nWhen you approve a company, you MUST identify and return ONLY the specific keywords and technologies that matched the ICP criteria.\n\nIn your response JSON, add two new fields:\n- \"matched_keywords\": array of only the ICP keywords found\n- \"matched_technologies\": array of only the ICP technologies found\n\nExample response format:\n{\n  \"approved\": true, \n  \"reason\": \"Location: United States ✓, Size: 250 employees ✓, Found 3 matches\",\n  \"matched_keywords\": [\"API\", \"Digital Transformation\"],\n  \"matched_technologies\": [\"GitLab\", \"Salesforce\"]\n}\n\nOnly include items that ACTUALLY match the ICP lists provided.\n\n4. INDUSTRY (SOFT REQUIREMENT)\n  Check if company_industry field has a value\n   - If industry is NULL, empty string \"\", \"Unknown\", or \"Technology\" → SKIP industry check, do not reject\n   - If industry HAS ANY OTHER VALUE → it MUST be an EXACT match to ICP industries\n   - \"Computer & Network Security\" does NOT match \"Computer Software\" → REJECT\n   - \"Cybersecurity\" does NOT match \"Information Technology\" → REJECT  \n   - \"Financial Services\" does NOT match \"Computer Software\" → REJECT\n   - Only accept if industry is genuinely similar (e.g., \"Software Development\" matches \"Computer Software\")\n   - When in doubt about industry match → REJECT\n   - NO EXCEPTIONS\n\nDECISION LOGIC:\n✅ APPROVE ONLY if: Location matches AND Employee size in range AND At least one keyword/tech match AND (Industry is empty/null/Unknown/Technology OR Industry closely matches ICP)\n❌ REJECT if: Location mismatch OR employee size out of range OR no keyword/tech match OR (Industry has a real value but doesn't match ICP industries)\n\nRESPONSE FORMAT - CRITICAL:\nYou MUST respond with ONLY valid JSON. No markdown, no backticks, no explanations outside the JSON.\n\nFor APPROVAL:\n{\"approved\": true, \"reason\": \"Location: United States ✓, Size: 1800 employees (in range) ✓, Keywords: API/Cloud match ✓, Industry: empty/matches ✓\"}\n\nFor REJECTION (Industry):\n{\"approved\": false, \"reason\": \"Industry mismatch: Company industry is 'Computer & Network Security' which does not match ICP industries: Computer Software, Information Technology\"}\n\nFor REJECTION (Location):\n{\"approved\": false, \"reason\": \"Location mismatch: Company in Canada, ICP requires United States/United Kingdom/Germany/India/Singapore/Australia\"}\n\nFor REJECTION (Employee Size):\n{\"approved\": false, \"reason\": \"Employee size 15 is below minimum range 50-5000\"}\n\nFor REJECTION (No Keywords):\n{\"approved\": false, \"reason\": \"No keyword or technology match found - company does not align with API/DevOps/Cloud focus\"}\n\nBE EXTREMELY STRICT ON INDUSTRY. If industry is provided and doesn't closely match, REJECT immediately."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        11728,
+        -64
+      ],
+      "id": "c8f06d1c-59c0-478a-849c-ffdba98ce1b4",
+      "name": "Validate Company ICP"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Person Found:\nName: {{ $json.person_name }}\nTitle: {{ $json.person_title }}\nSeniority: {{ $json.person_seniority }}\nDepartment: {{ $json.person_subdepartments }}\n\n\n\nDoes this person have decision-making authority for purchasing API/developer tools?",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=You are a buyer persona validator for B2B sales qualification.\n\nYour job is to validate if a person matches the target buyer persona based on their title, seniority, and department.\n\nAPPROVAL CRITERIA - DYNAMIC BASED ON ICP:\n✅ APPROVE ONLY if the person has ALL of these:\n- Title contains one of the target seniority levels (e.g., VP, Director, Manager, Head, Lead, Chief)\n- Department/Function aligns with the target departments provided in the ICP\n- Role indicates decision-making authority for purchases in their domain\n\nREJECTION CRITERIA - REJECT IMMEDIATELY:\n❌ Junior roles: Junior, Associate, Intern, Entry-level\n❌ Individual contributors without leadership (e.g., \"Software Engineer\" without Senior/Staff/Principal/Lead)\n❌ Departments that clearly don't match the ICP (if ICP targets Engineering, reject Marketing/Sales/Finance)\n\nKEY RULES:\n- Title seniority is NOT enough alone - department MUST align with ICP\n- When in doubt about whether a role matches the ICP → REJECT\n- Better to miss borderline cases than approve non-matching roles\n\nRespond ONLY with valid JSON:\n{\"approved\": true, \"reason\": \"VP Engineering - matches target seniority and department\"}\nOR\n{\"approved\": false, \"reason\": \"Marketing Director - department doesn't match Engineering/DevOps target\"}\n\n"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        13264,
+        -80
+      ],
+      "id": "f65b079d-d9c6-4695-b9a1-cb13a1fb5c9f",
+      "name": "Validate Person Persona"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4",
+          "mode": "list",
+          "cachedResultName": "gpt-4"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        11680,
+        112
+      ],
+      "id": "5aaf634c-0adf-465a-bfa3-d2e2fdfcb00e",
+      "name": "OpenAI Model (Company Validation)",
+      "credentials": {
+        "openAiApi": {
+          "id": "xZbMj0CpPkrifpgn",
+          "name": "OpenAI account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        13296,
+        112
+      ],
+      "id": "9bf3e28c-f931-4fe3-9d0d-45754efc1021",
+      "name": "OpenAI Model (Persona Validation)",
+      "credentials": {
+        "openAiApi": {
+          "id": "eCq57XlUHIiWXbzt",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 45
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        15024,
+        -96
+      ],
+      "id": "311cb855-a090-4a08-9850-f51669a5cdfc",
+      "name": "Wait for Verification Complete",
+      "webhookId": "bbaae127-f465-4c1f-9ce3-7357b706c3f9"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1j2H2tZM_fI-lWgOleBm971HDtnsXxgkQUWoZqmNCYnI",
+          "mode": "list"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1757340751,
+          "mode": "list",
+          "cachedResultName": "Sheet3",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1j2H2tZM_fI-lWgOleBm971HDtnsXxgkQUWoZqmNCYnI/edit#gid=1757340751"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Designation",
+              "displayName": "Designation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Person Seniority",
+              "displayName": "Person Seniority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Person Department",
+              "displayName": "Person Department",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Person Subdepartment",
+              "displayName": "Person Subdepartment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Person Location",
+              "displayName": "Person Location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "LinkedIn URL",
+              "displayName": "LinkedIn URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email Id",
+              "displayName": "Email Id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email Verification Status",
+              "displayName": "Email Verification Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Name",
+              "displayName": "Company Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Domain",
+              "displayName": "Company Domain",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Employee Size",
+              "displayName": "Employee Size",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Location",
+              "displayName": "Company Location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Industry",
+              "displayName": "Company Industry",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Technologies",
+              "displayName": "Company Technologies",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Keywords",
+              "displayName": "Company Keywords",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Approved",
+              "displayName": "Company Approved",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Validation Reason",
+              "displayName": "Company Validation Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Persona Approved",
+              "displayName": "Persona Approved",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Persona Validation Reason",
+              "displayName": "Persona Validation Reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company Description",
+              "displayName": "Company Description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        15904,
+        -96
+      ],
+      "id": "3fba93b0-6b8a-4a9d-bb46-f91434b7cf9c",
+      "name": "Save to Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "PUyWvyb0N07YX7JV",
+          "name": "Google Sheets account 9"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "n85XJV2AJVDwYH4I",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/n85XJV2AJVDwYH4I",
+          "cachedResultName": "Aimfox Follow-up Sequence"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [
+            "leads"
+          ],
+          "schema": [
+            {
+              "id": "Sales Automation AI review",
+              "displayName": "Sales Automation AI review",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        16112,
+        -96
+      ],
+      "id": "dde27b1f-1a0d-4c5e-8ee9-958956140e3d",
+      "name": "Call 'Aimfox Follow-up Sequence'"
+    }
+  ],
+  "pinData": {
+    "Format Company Data": [
+      {
+        "json": {
+          "company_id": "56e6893cf3e5bb0236009081",
+          "company_name": "SID Global Solutions",
+          "company_domain": "sidgs.com",
+          "company_employees": 360,
+          "company_location": "United States",
+          "company_industry": "information technology & services",
+          "company_technologies": "AI, API Gateway, AWS Analytics, AWS Glue Data Catalog, AWS SDK for JavaScript, AWS Trusted Advisor, Airflow, Amazon Product Advertising API, Amazon QuickSight, Amazon S3, Apigee, Apigee Edge, Apollo, Atlassian Cloud, Azure Analysis Services, Azure Linux Virtual Machines, Azure Machine Learning, Batch, Bootstrap, Bootstrap Framework, CAT, CSS, Cytoscape, Dart, Docker, Fastapi, Flask, Flutter, FlutterFlow, GRPC, Git, GitHub Actions, Google Analytics, Google Cloud Platform, Google Font API, Google Tag Manager, GraalVM, HTML Pro, Hibernate, Hubspot, Hugging Face, IBM ILOG CPLEX Optimization Studio, JWT, Javascript, Jenkins, Kubeflow, Kubernetes, Lambda Cloud, Langchain, LinkedIn Ads, LinkedIn Sales Navigator, Linkedin Marketing Solutions, MLflow, Maven, Microsoft Azure Monitor, Mobile Friendly, Mutiny, Nginx, Onit, Outlook, PHP, Pipedrive, Postman, Pulsant Hosting, PySpark, PyTorch, Python, REST, Red Hat JBoss Enterprise SOA Platform, Redshift, Remote, SQL, Salesforce, Salesforce CRM Analytics, Selenium, Sizmek (MediaMind), Slack, Spring Boot, Swagger UI, TensorFlow, Tricentis Tosca, Vertex AI, WP-Oauth, WordPress.org, Wordpress, Wordpress.com, dynaTrace, mO Jira OAuth SSO, Jira OpenID Connect SSO, Jira OIDC SSO, reCAPTCHA, scikit-learn",
+          "company_keywords": "api, digital transformation, platform engineering, microservices, cloud native, developers tools, open banking, headless commerce",
+          "company_description": "SID Global Solutions (SIDGS) is an AI-driven digital transformation company that provides innovative platform solutions and services to enterprises worldwide. Founded in 2006, SIDGS has grown from an Enterprise Architecture and consulting firm into a prominent player in digital transformation, with a global presence in locations such as the USA, India, Singapore, Dubai, and the Philippines. The company employs over 1,000 professionals and serves more than 100 Fortune 500 clients.\n\nSIDGS offers a wide range of services, including AI-powered transformation, cloud and infrastructure solutions, application modernization, data analytics, and agile project management. They are recognized as a leading Google Apigee implementation partner and have developed over 150 cloud solutions tailored to various industries, including banking, healthcare, retail, and manufacturing. Their flexible engagement models cater to different client needs, ensuring scalable and transparent pricing."
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      },
+      {
+        "json": {
+          "company_id": "5ed02cefda1c7000016cc42d",
+          "company_name": "Supabase",
+          "company_domain": "supabase.com",
+          "company_employees": 300,
+          "company_location": "United States",
+          "company_industry": "information technology & services",
+          "company_technologies": "AI, AWS Multi-Factor Authentication, Adobe Media Optimizer, Adobe Real-Time CDP, Adobe TestAndTarget, Affiliate Window, Amazon EKS Anywhere, Amazon Web Services (AWS), Azure Data Lake Storage, Cedexis Radar, CloudFlare Hosting, Cloudflare DNS, Cloudinary, Cornerstone On Demand, Docker, Facebook Custom Audiences, Facebook Login (Connect), Facebook Widget, Gem, GitHub, Gmail, Google AlloyDB for PostgreSQL, Google Analytics, Google Apps, Google Cloud, Google Cloud BigQuery, Google Font API, Google Play, Google Plus, Google Tag Manager, Greenhouse.io, Hubspot, Intercom, Kubernetes, Lever, Linkedin Marketing Solutions, Microsoft Azure Monitor, Microsoft Office 365, Mobile Friendly, Multilingual, Netlify, Next.js, PostgreSQL, React, Remote, Salesforce, Segment.io, SendInBlue, Slack, Stripe, Supabase, Tor, TubeMogul, Vercel, Vimeo, WordPress.org, Yelp, YouTube, go+",
+          "company_keywords": "api, digital transformation, platform engineering, microservices, cloud native, developers tools, open banking, headless commerce",
+          "company_description": "Supabase is an open-source backend-as-a-service (BaaS) platform built on PostgreSQL, designed to provide developers with essential tools for application development. Founded in January 2020, the company offers features such as database hosting, authentication, storage, auto-generated APIs, serverless functions, and a vector toolkit for AI applications. With a focus on rapid development, Supabase enables users to set up backends quickly and scale applications efficiently.\n\nThe company has experienced significant growth, expanding from 8 hosted databases to 800 shortly after its launch. Supabase has attracted a large community of developers, boasting over 1.7 million registered users and 79,000 GitHub stars. It operates with a profit-sharing model, distributing a portion of its profits to employees, and has raised over $396 million in funding, achieving a valuation of $2 billion. Supabase is headquartered in San Francisco and employs around 120-124 people globally."
+        },
+        "pairedItem": {
+          "item": 1
+        }
+      },
+      {
+        "json": {
+          "company_id": "5f47a6c98869850001eed1e9",
+          "company_name": "Index Ventures",
+          "company_domain": "indexventures.com",
+          "company_employees": 110,
+          "company_location": "United Kingdom",
+          "company_industry": "venture capital & private equity",
+          "company_technologies": "AI, Adobe Media Optimizer, Amazon AWS, Android, Cedexis Radar, Circle, Django, Drupal, Gmail, Google Apps, Google Font API, Google Maps, Google Places, Google Tag Manager, Greenhouse.io, Gunicorn, Hubspot, Lattice, Lever, Mapbox, Mimecast, Mobile Friendly, Rackspace MailGun, Remote, Route 53, Salesforce, Slack, Vimeo, WordPress.org",
+          "company_keywords": "api, digital transformation, platform engineering, microservices, cloud native, developers tools, open banking, headless commerce",
+          "company_description": "Index Ventures is a global venture capital firm founded in 1996, with headquarters in London and San Francisco, and additional offices in New York and Geneva. The firm focuses on early-stage to growth investments in technology-enabled companies across various sectors, including fintech, gaming, cybersecurity, and healthcare, primarily in the USA, Europe, and Israel.\n\nWith approximately $12 billion raised across 15 funds, Index Ventures adopts a flexible investment approach, providing capital from $500K for seed investments to tens of millions for scaling companies. The firm emphasizes a human-first, contrarian mindset, supporting ambitious entrepreneurs and often assisting European companies in expanding to the US market. Index Ventures has a notable portfolio that includes companies like Revolut, Dropbox, and Roblox, and it maintains a long-term partnership model, supporting businesses from seed to IPO."
+        },
+        "pairedItem": {
+          "item": 2
+        }
+      },
+      {
+        "json": {
+          "company_id": "5fcdc437d0a83e00bf4fb193",
+          "company_name": "TechCrunch",
+          "company_domain": "techcrunch.com",
+          "company_employees": 550,
+          "company_location": "United States",
+          "company_industry": "information technology & services",
+          "company_technologies": "AI, Angular JS v1, Bluekai, Chartbeat, Cloudflare DNS, Google Tag Manager, Hubspot, Microsoft Office 365, Mimecast, Mobile Friendly, Nginx, Outlook, PayPal Credit, Remote, Sailthru, Slack, Taboola Newsroom, The Trade Desk, TripleLift, Typekit, UPS, Videology, Webflow, WordPress.org, Wordpress VIP, Yahoo Analytics, YouTube, Zendesk, reCAPTCHA",
+          "company_keywords": "api, digital transformation, platform engineering, microservices, cloud native, developers tools, open banking, headless commerce",
+          "company_description": "TechCrunch is a prominent technology media company founded in 2005, focusing on news, analysis, and events related to startups, emerging technologies, AI, and investments. It provides extensive coverage of the tech ecosystem, reaching millions of readers each month through its websites, newsletters, podcasts, and flagship events like TechCrunch Disrupt.\n\nInitially started as a blog to track Web 2.0 companies, TechCrunch quickly grew into a leading tech news outlet, known for significant scoops such as the 2006 leak of Google's YouTube acquisition. The company has evolved over the years, now attracting over 12 million unique visitors and 37 million page views monthly. TechCrunch offers a variety of content, including daily stories, in-depth analyses, and profiles, along with events for founders and investors. It also features podcasts and newsletters, and provides exclusive insights through its TechCrunch+ subscription service."
+        },
+        "pairedItem": {
+          "item": 3
+        }
+      },
+      {
+        "json": {
+          "company_id": "60fadfba7cf1a300a400ba8f",
+          "company_name": "CodeVyasa",
+          "company_domain": "codevyasa.com",
+          "company_employees": 220,
+          "company_location": "United States",
+          "company_industry": "information technology & services",
+          "company_technologies": ".NET, A Small Orange, ABAP, AI, ASP.NET, AWS Analytics, AWS CloudFormation, AWS Glue, AWS Glue Data Catalog, AWS SDK for JavaScript, AWS Transfer for SFTP, AWS Trusted Advisor, Absorb LMS, Adobe Experience Platform, Adobe Journey Optimizer, Amazon AWS, Amazon EC2, Amazon EKS Anywhere, Amazon S3, Android, Android Studio, Angular, Apex, Apollo, Athena, Azure AI Search, Azure Analysis Services, Azure App Center, Azure Devops, Azure Linux Virtual Machines, Azure OpenAI Service, BASE, C#, C# (C Sharp), Cisco VPN, Cloudflare DNS, Copilot, Dell EMC PowerStore, Docker, DotNetNuke, Eaglestats, Emma, Express, Fastapi, Flask, Gem, GitHub Actions, GitLab, Gmail, Google AdWords Conversion, Google Apps, Google Cloud Platform, Google Kubernetes Engine (GKE), Google Sheets, Grafana, HELM, Harmony Email & Collaboration, Hostgator, IBM ILOG CPLEX Optimization Studio, IGEL Endpoints, JWT, Javascript, Jenkins, Jira, Kotlin, Kubernetes, Lambda Cloud, Langchain, LinkedIn Ads, LinkedIn Sales Navigator, Linkedin Marketing Solutions, MAUI, Meta Code Llama, Micro, Microsoft Azure Monitor, Microsoft Excel, Microsoft SQL Server Reporting Services, Microsoft.NET Core 3.1, Mist, Mobile Friendly, Mode, MongoDB, MySQL, Nestjs, New Relic, Next.js, Ning, OneTrust, PL/SQL, Playwright, PostgreSQL, Postman, Prometheus, PySpark, Pytest, Python, REST, RXJS, React, React Native, Recurly, Redshift, Ruby On Rails, SAP, SQL, Sales Cloud Einstein, Salesforce, Salesforce CPQ, Salesforce CRM Analytics, Salesforce VisualForce, Selenium, Shopify, Shopify Plus, SiteCore, Sizmek (MediaMind), Slack, Spring, Spring Boot, Taleo Applicant Tracking Systems (ATS), Terraform, TypeScript, VMware SD-WAN, Webflow, Xamarin, go+, mO Jira OAuth SSO, Jira OpenID Connect SSO, Jira OIDC SSO, requests",
+          "company_keywords": "api, digital transformation, platform engineering, microservices, cloud native, developers tools, open banking, headless commerce",
+          "company_description": "CodeVyasa is a software product engineering and development company founded in 2018 by Shubham Garg. Based in Bengaluru, India, with offices in the USA and India, the company specializes in IT consulting, app development, and providing on-demand tech resources. CodeVyasa serves early-stage and mid-market product companies, as well as enterprises across the US, Australia, India, and the APAC regions. It has established itself as a trusted outsourcing partner for over 100 global clients, focusing on outcomes like stabilizing infrastructure and improving engineering velocity.\n\nThe company offers a wide range of services throughout the software development lifecycle, including product and SaaS development, data engineering, DevOps and cloud solutions, artificial intelligence, IoT, and IT consulting. CodeVyasa emphasizes a product-first approach and supports various technologies such as Java and .NET. It has received positive feedback for its expertise and responsiveness, making it a competitive player in the tech transformation space."
+        },
+        "pairedItem": {
+          "item": 4
+        }
+      },
+      {
+        "json": {
+          "company_id": "55e936d0f3e5bb1c24000014",
+          "company_name": "BigStep Technologies",
+          "company_domain": "bigsteptech.com",
+          "company_employees": 200,
+          "company_location": "India",
+          "company_industry": "information technology & services",
+          "company_technologies": ".NET, A Small Orange, AWS Analytics, AWS Bedrock, AWS SDK for JavaScript, AWS Trusted Advisor, Adobe Experience Manager, Akamai Connected Cloud (formerly Linode), Amazon S3, Amazon Simple Storage Service (S3), Android, Angular, Anthropic Claude, Apache, Apollo, Argon CI/CD Security, Azure AI Search, Azure Active Directory, Azure App Service, Azure Data Lake Storage, Azure Devops, Azure Functions, Azure Logic Apps, Azure OpenAI Service, Azure Storage Explorer, BASE, BERT, C#, CSS, Confluence, Cypress, Docker, Eaglestats, Express, GitHub Actions, Gmail, Google Apps, Google Cloud, Google Cloud BigQuery, Google Cloud Platform, Google Tag Manager, GraphQL, HTML5 Maker, Hubspot, Hugging Face, IBM ILOG CPLEX Optimization Studio, Instantly, Javascript, Jenkins, Jest, Jira, Kiosked, Kubernetes, LangGraph, Langchain, LinkedIn Ads, Micro, Microsoft Azure Monitor, Microsoft Graph, Microsoft OneDrive, Microsoft OneDrive for Business, Microsoft Power Automate, Microsoft SQL Server Reporting Services, Mobile Friendly, MongoDB, MySQL, Neogov HRMS, Nestjs, Next.js, OpenAI, PHP, PostGIS, PostgreSQL, Python, Rackspace MailGun, React, React Native, Redux, SQL, Salesforce, Salesforce CRM Analytics, Sendgrid, SharePoint, Slack, Snowflake, TSYS, Terraform, TypeScript, Ubuntu, Vertex AI, VueJS, go+, n8n",
+          "company_keywords": "api, digital transformation, platform engineering, microservices, cloud native, developers tools, open banking, headless commerce",
+          "company_description": "BigStep Technologies is an AI-driven, cloud-native software engineering and product development company founded in 2008 and based in Gurgaon, India, with a presence in Milpitas, California. The company specializes in digital transformation, full-stack application development, and IT services for startups, enterprises, and tech-enabled companies globally. With a team of approximately 180-200 employees, BigStep has delivered over 700 applications and solutions to more than 600 clients.\n\nThe company offers a range of services, including full-stack web and mobile app development, enterprise software development, cloud services, and data and AI solutions. Notable products include Channelize.io, a live stream shopping platform, and SocialApps.tech, which provides community solutions for social networking. BigStep emphasizes innovative and scalable products, utilizing modern technology stacks to enhance customer experience and support business transformation across various industries."
+        },
+        "pairedItem": {
+          "item": 5
+        }
+      },
+      {
+        "json": {
+          "company_id": "54a11fea69702d7fe6283702",
+          "company_name": "Platform9",
+          "company_domain": "platform9.com",
+          "company_employees": 130,
+          "company_location": "United States",
+          "company_industry": "information technology & services",
+          "company_technologies": ".NET, AI, AWS Trusted Advisor, Amazon AWS, Amazon EKS Anywhere, Amazon Linux 2, Ansible, Azure VPN Gateway, Bash, Bing Ads, Bootstrap Framework, Ceph, Circle, Clearbit, Container Network Interface (CNI), Cortex M-Series, Data Analytics, Demandware Analytics, Disqus, Docker, DoubleClick, DoubleClick Conversion, Drift, Factors.AI, Git, Gmail, Google Analytics, Google Apps, Google Cloud Hosting, Google Dynamic Remarketing, Google Maps, Google Maps (Non Paid Users), Google Tag Manager, Grafana, Grafana Loki, Hubspot, ICONICS IoT, Jira, KVM, Kubernetes, LinkedIn Ads, LinkedIn Sales Navigator, Linkedin Marketing Solutions, Mailchimp Mandrill, Marketo, Microsoft Office 365, Mixpanel, Mobile Friendly, Mode, NetApp iSCSI SAN Storage System, Nginx, OpenStack, Prometheus, Python, React, Remote, Route 53, SalesLoft, Salesforce, Slack, TelmarHelixa, Terraform, Tor, TypeScript, Ubuntu, UniFi SDN, VMware, VMware ESXi, WP Engine, WordPress.org, YouTube, Zendesk, ZoomInfo, Zoomdata, go+",
+          "company_keywords": "api, digital transformation, platform engineering, microservices, cloud native, developers tools, open banking, headless commerce",
+          "company_description": "Platform9 is a leading open distributed cloud service that helps organizations transform their existing infrastructure into a private cloud platform. Founded in 2013 by former VMware engineers, the company is headquartered in Mountain View, California, and employs around 120 people. Platform9 has raised $88.5 million in funding, with its latest round bringing in $26 million.\n\nThe company provides a SaaS-based platform that enables organizations to quickly create a self-service private cloud using their own servers. It supports KVM, Docker, and VMware vSphere, offering capabilities such as Kubernetes and cloud-native technologies, as well as VM and container management solutions. Platform9's service is designed to give enterprises AWS-like self-service features while allowing them to maintain full control over their resources and data. Notable customers include Juniper, Kingfisher Plc, Mavenir, Redfin, and Cloudera, who benefit from improved time-to-market and reduced operational costs."
+        },
+        "pairedItem": {
+          "item": 6
+        }
+      },
+      {
+        "json": {
+          "company_id": "5a9f6f9ca6da98d9a15f2002",
+          "company_name": "Open Banking",
+          "company_domain": "openbanking.org.uk",
+          "company_employees": 120,
+          "company_location": "United Kingdom",
+          "company_industry": "financial services",
+          "company_technologies": "Amazon AWS, Amazon SES, Atlassian Cloud, Google Maps, Google Maps (Non Paid Users), Google Tag Manager, Hotjar, Mobile Friendly, Nginx, Outlook, Pardot, Route 53, Salesforce, Salesforce Live Agent, Salesforce Service Cloud, Stripe, Vimeo, WP Engine, Wistia, WordPress.org, YouTube",
+          "company_keywords": "api, digital transformation, platform engineering, microservices, cloud native, developers tools, open banking, headless commerce",
+          "company_description": "Open Banking Limited is a UK-based non-profit organization dedicated to developing and maintaining the Open Banking Standard and Directory. Founded in 2016, it aims to promote competition and innovation within the UK banking sector. The organization is headquartered in London and operates under the governance of the UK's Competition and Markets Authority. It is funded by nine major UK banks and building societies, including Nationwide, Barclays, and HSBC.\n\nThe Open Banking Standard enables secure sharing of personal financial data between banks, customers, and authorized third-party providers through APIs. This framework supports innovations such as aggregated financial apps and cost-effective lending solutions. Open Banking Limited also oversees the Open Banking Directory, which lists FCA-regulated providers to ensure security and compliance. The organization focuses on developing industry guidelines and technical specifications for secure data sharing and payments, prioritizing strong customer authentication and consumer protections."
+        },
+        "pairedItem": {
+          "item": 7
+        }
+      },
+      {
+        "json": {
+          "company_id": "5e5839087c5fe400010a955c",
+          "company_name": "VMware",
+          "company_domain": "broadcom.com",
+          "company_employees": 21000,
+          "company_location": "United States",
+          "company_industry": "information technology & services",
+          "company_technologies": "AdRoll, AddThis, Adobe Marketing Cloud, Adobe Media Optimizer, Adobe TestAndTarget, Amazon AWS, Amazon SES, Apache, AppNexus, Atlassian Cloud, Bing Ads, Bootstrap Framework, Brighttalk, Cedexis Radar, CloudFlare CDN, CloudFlare Hosting, Cornerstone On Demand, DemandBase, DoubleClick, DoubleClick Conversion, Drift, Eloqua, Facebook Custom Audiences, Facebook Login (Connect), Facebook Widget, Gmail, GoToWebinar, Google AdSense, Google AdWords Conversion, Google Analytics, Google Apps, Google Dynamic Remarketing, Google Font API, Google Remarketing, Google Tag Manager, Hotjar, Hubspot, JQuery 2.1.1, Kaltura, Liferay, Linkedin Login, Linkedin Marketing Solutions, Linkedin Widget, LiveRamp, Marketo, Microsoft Office 365, Mobile Friendly, Multilingual, NetSuite, New Relic, OneTrust, Outlook, Pardot, React, Remote, Salesforce, Shutterstock, Slack, Tealium, Twitter Advertising, UltraDns, Varnish, Vercel, Vidyard, Vimeo, WordPress.org, Wordpress VIP, Workday, Workday Recruit, YouTube, reCAPTCHA",
+          "company_keywords": "",
+          "company_description": "VMware is a global infrastructure technology company known for its innovative solutions in virtualization and cloud infrastructure. Recently acquired by Broadcom, VMware has a strong history of supporting major brands and Fortune 500 companies with their mission-critical workloads.\n\nThe company's core offerings include vSphere, a foundational virtualization platform that automates IT operations, and VMware Cloud Foundation (VCF), a modern private cloud platform designed to enhance infrastructure, applications, and security. VCF 9.0, set to be released in June 2025, introduces built-in security features for compliance and security by default. VMware also provides software-defined data center solutions that extend virtualization to networking and storage.\n\nVMware is focused on the Modern Private Cloud, which aims to deliver an agile, secure, and cost-efficient cloud environment for all applications. The company prioritizes customer choice and innovation through strong partnerships, exemplified by clients like New Belgium Brewing Company, which is transitioning to a modern private cloud with VCF to improve cost efficiency and business continuity."
+        },
+        "pairedItem": {
+          "item": 8
+        }
+      },
+      {
+        "json": {
+          "company_id": "62d6cc8f0c3b8000e0bf96da",
+          "company_name": "Platform Engineering",
+          "company_domain": "platformengineering.org",
+          "company_employees": 28,
+          "company_location": "United States",
+          "company_industry": "education management",
+          "company_technologies": "Airtable, Bootstrap Framework, Cloudflare DNS, Docker, DoubleClick, DoubleClick Conversion, Drip, Facebook Custom Audiences, Facebook Login (Connect), Facebook Widget, Gmail, Google Analytics, Google Apps, Google Dynamic Remarketing, Google Tag Manager, Gunicorn, Hubspot, Linkedin Marketing Solutions, LumApps, Mobile Friendly, MouseFlow, Nginx, Skilljar Customer Education Platform, Stripe, Supabase, Typeform, Vercel, Webflow, YouTube, n8n",
+          "company_keywords": "api, digital transformation, platform engineering, microservices, cloud native, developers tools, open banking, headless commerce",
+          "company_description": "Platform Engineering is a global community and educational hub dedicated to platform engineering. With over 280,000 members and more than 25,000 active participants in its Slack community, it fosters connections among practitioners in the field. The organization focuses on providing resources for learning and certification, boasting over 4,000 certified platform engineers.\n\nThe community offers a variety of activities, including free courses, trainer-led certification journeys, and a rich content library filled with articles and guides on platform engineering topics. Members can engage in networking opportunities through events and discussions, while also accessing a job board and resources tailored for career development in platform engineering. Additionally, Platform Engineering provides insights into the tooling landscape, helping users navigate and integrate various tools into their organizational platforms."
+        },
+        "pairedItem": {
+          "item": 9
+        }
+      }
+    ],
+    "Build Apollo People Search": [
+      {
+        "json": {
+          "url": "https://api.apollo.io/api/v1/mixed_people/api_search",
+          "method": "POST",
+          "body": {
+            "person_titles": [
+              "director",
+              "vp",
+              "manager",
+              "engineering and technical",
+              "engineering",
+              "technical",
+              "-devops",
+              "-mobile development",
+              "-mobile",
+              "development",
+              "-software development",
+              "-software",
+              "-web development",
+              "-web"
+            ],
+            "person_current_titles": [
+              "director",
+              "vp",
+              "manager",
+              "engineering and technical",
+              "engineering",
+              "technical",
+              "-devops",
+              "-mobile development",
+              "-mobile",
+              "development",
+              "-software development",
+              "-software",
+              "-web development",
+              "-web"
+            ],
+            "q_organization_domains_list": [
+              "supabase.com",
+              "codevyasa.com",
+              "bigsteptech.com",
+              "platform9.com",
+              "openbanking.org.uk"
+            ],
+            "page": 1,
+            "per_page": 100
+          },
+          "processedDomainCount": 5,
+          "processedDomains": [
+            "supabase.com",
+            "codevyasa.com",
+            "bigsteptech.com",
+            "platform9.com",
+            "openbanking.org.uk"
+          ],
+          "targetTitles": 14,
+          "targetTitlesPreview": [
+            "director",
+            "vp",
+            "manager",
+            "engineering and technical",
+            "engineering"
+          ],
+          "locationFilter": "NONE (domain filter only)",
+          "icpSource": "Extract ICP node"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ],
+    "Prepare Company Domains": [
+      {
+        "json": {
+          "company_domain": "supabase.com"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      },
+      {
+        "json": {
+          "company_domain": "codevyasa.com"
+        },
+        "pairedItem": {
+          "item": 1
+        }
+      },
+      {
+        "json": {
+          "company_domain": "bigsteptech.com"
+        },
+        "pairedItem": {
+          "item": 2
+        }
+      },
+      {
+        "json": {
+          "company_domain": "platform9.com"
+        },
+        "pairedItem": {
+          "item": 3
+        }
+      },
+      {
+        "json": {
+          "company_domain": "openbanking.org.uk"
+        },
+        "pairedItem": {
+          "item": 4
+        }
+      }
+    ]
+  },
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Extract ICP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Verification": {
+      "main": [
+        [
+          {
+            "node": "Wait for Verification Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apollo Company Search": {
+      "main": [
+        [
+          {
+            "node": "Extract Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Companies": {
+      "main": [
+        [
+          {
+            "node": "Company Enrich",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Company Validation": {
+      "main": [
+        [
+          {
+            "node": "Company Approval Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract People": {
+      "main": [
+        [
+          {
+            "node": "Validate Person Persona",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Persona Validation": {
+      "main": [
+        [
+          {
+            "node": "Persona Approval Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apollo People Enrich (with emails)": {
+      "main": [
+        [
+          {
+            "node": "Format Final Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Final Data": {
+      "main": [
+        [
+          {
+            "node": "Pre Email Verification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Company Enrich": {
+      "main": [
+        [
+          {
+            "node": "Format Company Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract ICP": {
+      "main": [
+        [
+          {
+            "node": "Apollo Company Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Company Data": {
+      "main": [
+        [
+          {
+            "node": "Validate Company ICP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Company Approval Filter": {
+      "main": [
+        [
+          {
+            "node": "Prepare Company Domains",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persona Approval Filter": {
+      "main": [
+        [
+          {
+            "node": "Apollo People Enrich (with emails)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pre Email Verification": {
+      "main": [
+        [
+          {
+            "node": "Email Verification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Email Verification": {
+      "main": [
+        [
+          {
+            "node": "Merge Final Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Final Data": {
+      "main": [
+        [
+          {
+            "node": "Save to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Email Verification Results": {
+      "main": [
+        [
+          {
+            "node": "Post Email Verification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Company Domains": {
+      "main": [
+        [
+          {
+            "node": "Build Apollo People Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Apollo People Search": {
+      "main": [
+        [
+          {
+            "node": "Apollo People Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apollo People Search": {
+      "main": [
+        [
+          {
+            "node": "Extract People",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Company ICP": {
+      "main": [
+        [
+          {
+            "node": "Parse Company Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Person Persona": {
+      "main": [
+        [
+          {
+            "node": "Parse Persona Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model (Company Validation)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Validate Company ICP",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model (Persona Validation)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Validate Person Persona",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Verification Complete": {
+      "main": [
+        [
+          {
+            "node": "Get Email Verification Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Call 'Aimfox Follow-up Sequence'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "7aa865be-bf67-4c30-be8b-013634389dbc",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "9ed3b49e96399c647b63a1a3643de60fec30509a86483f2aa5625a86cd56a6a8"
+  },
+  "nodeGroups": [],
+  "id": "m6iNNXPSjuQ3mbZo",
+  "tags": []
+}
